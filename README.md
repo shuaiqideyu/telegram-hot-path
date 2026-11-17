@@ -10,7 +10,7 @@
 
 纯文本指令只为省几十毫秒时，把处理做薄即可，不必单独起这台服务。三种情况都不成立，也不要迁。
 
-下面按准备、启动、迁移、退回写完。命令里的 token、`api_id`、`api_hash` 都是占位符。对照日期是 2026-11-15，来源是当天的 [Bot API：Using a Local Bot API Server](https://core.telegram.org/bots/api#using-a-local-bot-api-server)、[logOut](https://core.telegram.org/bots/api#logout)，以及 [telegram-bot-api](https://github.com/tdlib/telegram-bot-api) 的 README 和 master 上的 `Client::finish_closing`。真正迁移前再读一遍这三处。
+下面按准备、启动、迁移、退回写完。命令里的 token、`api_id`、`api_hash` 都是占位符。对照日期是 2026-11-17。来源是 [Bot API：Using a Local Bot API Server](https://core.telegram.org/bots/api#using-a-local-bot-api-server)、[logOut](https://core.telegram.org/bots/api#logout)、[Bot API FAQ](https://core.telegram.org/bots/faq)，以及 [telegram-bot-api](https://github.com/tdlib/telegram-bot-api) master 上的 `Client::finish_closing`、`Client::send` 和 `MAX_CONCURRENTLY_SENT_CHAT_MESSAGES`。真正迁移前再读一遍官方说明。
 
 ## 本机模式多出来的能力
 
@@ -33,7 +33,21 @@
 
 `file_id` 属于这一个 bot，不能拿给另一个 bot 用。同一个 bot 在云端拿到的 `file_id`，改连本机服务后继续有效。
 
-频率上限不因换入口而提高。Telegram 在数据中心侧执行限额，不在 `api.telegram.org` 这个门面上执行。当天的数字以 [Bot API FAQ](https://core.telegram.org/bots/faq) 为准。
+## 频率
+
+发送限额跟云端是同一套，由数据中心执行。对照 2026-11-17 的 [Bot API FAQ](https://core.telegram.org/bots/faq)：
+
+| 范围 | 免费上限 |
+|---|---|
+| 同一个聊天 | 大约每秒 1 条。可以短时间冲一下，接着会收到 429 |
+| 同一个群 | 每分钟 20 条 |
+| 群发 | 大约每秒 30 条 |
+
+在 @BotFather 打开 Paid Broadcasts 之后，群发可以到大约每秒 1000 条。超过每秒 30 条的部分，每条 0.1 Stars，从 bot 余额里扣。打开这个档位要余额里至少有 100000 Stars，并且月活至少 100000。只对发送成功的消息收费。余额、月活或单价变了，以当天 FAQ 为准。
+
+`--local` 不替调用方守这三档。云端入口上的两段排队在源码里都写着非 local 模式才生效：启动满 60 秒后，活跃请求过多、同时上传的文件过多或过大，会直接拒绝；带文件的请求还会按文件大小把下一次发送错开。本机模式跳过这两段。本机只在同一个聊天里、还没发完的消息堆到 310 条时拒绝，源码把这个数标成一个故意放得很宽的闸，不是上面的官方限额。
+
+所以 bot 自己按这三档排队。收到 429，停 `retry_after` 再发；连续 429 就把速度降下来。群发排进 bot 已经在用的那条发送队列。
 
 ## 要接受的代价
 
